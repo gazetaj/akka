@@ -5,16 +5,12 @@ package akka.cluster
 
 import com.typesafe.config.Config
 import akka.ConfigurationException
-import akka.actor.Actor
-import akka.actor.ActorPath
-import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import akka.actor.ActorSystemImpl
 import akka.actor.Deploy
 import akka.actor.DynamicAccess
 import akka.actor.InternalActorRef
 import akka.actor.NoScopeGiven
-import akka.actor.Props
 import akka.actor.Scheduler
 import akka.actor.Scope
 import akka.actor.Terminated
@@ -50,15 +46,11 @@ private[akka] class ClusterActorRefProvider(
   _dynamicAccess: DynamicAccess) extends RemoteActorRefProvider(
   _systemName, _settings, _eventStream, _dynamicAccess) {
 
-  @volatile private var remoteDeploymentWatcher: ActorRef = _
-
   override def init(system: ActorSystemImpl): Unit = {
     super.init(system)
 
     // initialize/load the Cluster extension
     Cluster(system)
-
-    remoteDeploymentWatcher = system.systemActorOf(Props[RemoteDeploymentWatcher], "RemoteDeploymentWatcher")
   }
 
   /**
@@ -67,53 +59,12 @@ private[akka] class ClusterActorRefProvider(
    */
   override protected def createDeployer: ClusterDeployer = new ClusterDeployer(settings, dynamicAccess)
 
-  /**
-   * This method is overridden here to keep track of remote deployed actors to
-   * be able to clean up corresponding child references.
-   */
-  override def useActorOnNode(ref: ActorRef, props: Props, deploy: Deploy, supervisor: ActorRef): Unit = {
-    super.useActorOnNode(ref, props, deploy, supervisor)
-    import RemoteDeploymentWatcher.WatchRemote
-    remoteDeploymentWatcher ! WatchRemote(ref, supervisor)
-  }
-
   override private[akka] def afterSendSystemMessage(message: SystemMessage): Unit = {
     // FIXME we need to support remote death watch for a mix of cluster nodes and non-cluster nodes
     // I'm thinking about creating a subclass of RemoteWatcher that is aware of cluster members
     // super.afterSendSystemMessage(message)
   }
 
-}
-
-/**
- * INTERNAL API
- */
-private[akka] object RemoteDeploymentWatcher {
-  case class WatchRemote(actor: ActorRef, supervisor: ActorRef)
-}
-
-/**
- * INTERNAL API
- *
- * Responsible for cleaning up child references of remote deployed actors when remote node
- * goes down (jvm crash, network failure), i.e. triggered by [[akka.actor.AddressTerminated]].
- */
-private[akka] class RemoteDeploymentWatcher extends Actor {
-  import RemoteDeploymentWatcher._
-  var supervisors = Map.empty[ActorRef, InternalActorRef]
-
-  def receive = {
-    case WatchRemote(a, supervisor: InternalActorRef) ⇒
-      supervisors += (a -> supervisor)
-      context.watch(a)
-
-    case t @ Terminated(a) if supervisors isDefinedAt a ⇒
-      // send extra DeathWatchNotification to the supervisor so that it will remove the child
-      supervisors(a).sendSystemMessage(DeathWatchNotification(a, existenceConfirmed = false, addressTerminated = true))
-      supervisors -= a
-
-    case _: Terminated ⇒
-  }
 }
 
 /**

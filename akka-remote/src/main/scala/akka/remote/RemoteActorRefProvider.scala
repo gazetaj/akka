@@ -145,6 +145,7 @@ private[akka] class RemoteActorRefProvider(
   @volatile private var remotingTerminator: ActorRef = _
 
   @volatile private var remoteWatcher: ActorRef = _
+  @volatile private var remoteDeploymentWatcher: ActorRef = _
 
   def init(system: ActorSystemImpl): Unit = {
     local.init(system)
@@ -169,6 +170,7 @@ private[akka] class RemoteActorRefProvider(
     _internals = internals
     remotingTerminator ! internals
     remoteWatcher = createRemoteWatcher(system)
+    remoteDeploymentWatcher = createRemoteDeploymentWatcher(system)
 
     _log = Logging(eventStream, "RemoteActorRefProvider")
 
@@ -200,6 +202,9 @@ private[akka] class RemoteActorRefProvider(
 
     new DefaultFailureDetectorRegistry(() ⇒ createFailureDetector())
   }
+
+  protected def createRemoteDeploymentWatcher(system: ActorSystemImpl): ActorRef =
+    system.systemActorOf(Props[RemoteDeploymentWatcher], "remote-deployment-watcher")
 
   def actorOf(system: ActorSystemImpl, props: Props, supervisor: InternalActorRef, path: ActorPath,
               systemService: Boolean, deploy: Option[Deploy], lookupDeploy: Boolean, async: Boolean): InternalActorRef = {
@@ -379,6 +384,8 @@ private[akka] class RemoteActorRefProvider(
     // before someone can send messages to it
     resolveActorRef(RootActorPath(ref.path.address) / "remote") !
       DaemonMsgCreate(props, deploy, ref.path.toSerializationFormat, supervisor)
+
+    remoteDeploymentWatcher ! RemoteDeploymentWatcher.WatchRemote(ref, supervisor)
   }
 
   def getExternalAddressFor(addr: Address): Option[Address] = {
