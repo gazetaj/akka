@@ -31,6 +31,8 @@ import akka.cluster.routing.SystemLoadAverageMetricsSelector
 import akka.cluster.routing.CpuMetricsSelector
 import akka.cluster.routing.MetricsSelector
 import akka.dispatch.sysmsg.SystemMessage
+import akka.actor.ActorRef
+import akka.actor.Props
 
 /**
  * INTERNAL API
@@ -53,17 +55,25 @@ private[akka] class ClusterActorRefProvider(
     Cluster(system)
   }
 
+  override protected def createRemoteWatcher(system: ActorSystemImpl): ActorRef = {
+    // make sure Cluster extension is initialized/loaded from init thread
+    Cluster(system)
+
+    import remoteSettings._
+    val failureDetector = createRemoteWatcherFailureDetector(system)
+    system.systemActorOf(Props(new ClusterRemoteWatcher(
+      failureDetector,
+      heartbeatInterval = WatchHeartBeatInterval,
+      unreachableReaperInterval = WatchUnreachableReaperInterval,
+      heartbeatExpectedResponseAfter = WatchHeartbeatExpectedResponseAfter,
+      numberOfEndHeartbeatRequests = WatchNumberOfEndHeartbeatRequests)), "remote-watcher")
+  }
+
   /**
    * Factory method to make it possible to override deployer in subclass
    * Creates a new instance every time
    */
   override protected def createDeployer: ClusterDeployer = new ClusterDeployer(settings, dynamicAccess)
-
-  override private[akka] def afterSendSystemMessage(message: SystemMessage): Unit = {
-    // FIXME we need to support remote death watch for a mix of cluster nodes and non-cluster nodes
-    // I'm thinking about creating a subclass of RemoteWatcher that is aware of cluster members
-    // super.afterSendSystemMessage(message)
-  }
 
 }
 

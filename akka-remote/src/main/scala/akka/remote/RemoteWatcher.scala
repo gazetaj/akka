@@ -34,7 +34,7 @@ private[akka] object RemoteWatcher {
     def counts(watching: Int, watchingNodes: Int, watchedByNodes: Int): Stats =
       new Stats(watching, watchingNodes, watchedByNodes)(Set.empty)
   }
-  case class Stats(watching: Int, watchingNodes: Int, watchedByNodes: Int)(watchingRefs: Set[(ActorRef, ActorRef)]) {
+  case class Stats(watching: Int, watchingNodes: Int, watchedByNodes: Int)(val watchingRefs: Set[(ActorRef, ActorRef)]) {
     override def toString: String = {
       def formatWatchingRefs: String =
         if (watchingRefs.isEmpty) ""
@@ -157,10 +157,14 @@ private[akka] class RemoteWatcher(
     watchingNodes foreach { a ⇒
       if (!unreachable(a) && !failureDetector.isAvailable(a)) {
         log.warning("Detected unreachable: [{}]", a)
-        context.system.eventStream.publish(AddressTerminated(a))
+        publishAddressTerminated(a)
         unreachable += a
       }
     }
+
+  def publishAddressTerminated(address: Address): Unit = {
+    context.system.eventStream.publish(AddressTerminated(address))
+  }
 
   def watchRemote(watchee: ActorRef, watcher: ActorRef): Unit =
     if (watchee.path.uid == akka.actor.ActorCell.undefinedUid)

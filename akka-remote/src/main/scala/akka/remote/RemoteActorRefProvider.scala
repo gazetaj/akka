@@ -169,14 +169,14 @@ private[akka] class RemoteActorRefProvider(
 
     _internals = internals
     remotingTerminator ! internals
-    remoteWatcher = createRemoteWatcher(system)
-    remoteDeploymentWatcher = createRemoteDeploymentWatcher(system)
 
     _log = Logging(eventStream, "RemoteActorRefProvider")
 
     // this enables reception of remote requests
     transport.start()
 
+    remoteWatcher = createRemoteWatcher(system)
+    remoteDeploymentWatcher = createRemoteDeploymentWatcher(system)
   }
 
   protected def createRemoteWatcher(system: ActorSystemImpl): ActorRef = {
